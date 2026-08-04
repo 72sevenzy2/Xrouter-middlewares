@@ -11,14 +11,33 @@ import (
 
 // client request details
 type client struct {
-	requests int
+	requests  int
 	resetTime time.Time
 }
 
-var clients = map[string]*client{}
-var mu sync.Mutex // cleanup gorountine will also modify client.
+const (
+	window = time.Minute
+)
+
+var (
+	clients = map[string]*client{}
+	mu      sync.Mutex // cleanup gorountine will also modify client.
+)
 
 func RateLimiter() core.Middleware {
+	// cleanup gorountine
+	go func() {
+		for range time.Tick(window) {
+			mu.Lock()
+			for ip, c := range clients {
+				if time.Now().After(c.resetTime) {
+					delete(clients, ip)
+				}
+			}
+			mu.Unlock()
+		}
+	}()
+
 	return func(hf core.HandlerFunc) core.HandlerFunc {
 		return func(w http.ResponseWriter, r *core.Request) {
 			clientIp := r.RemoteAddr
@@ -40,12 +59,14 @@ func RateLimiter() core.Middleware {
 
 			c.requests++
 
-
 			if c.requests > 100 { // 100 requests cap for now
 				mu.Unlock()
 				response.JSON(w, response.WithError(http.StatusText(http.StatusTooManyRequests)), response.WithStatus(http.StatusTooManyRequests))
 				return
 			}
+
+			mu.Unlock()
+			hf(w, r)
 
 		}
 	}
