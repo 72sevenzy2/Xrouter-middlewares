@@ -12,27 +12,23 @@ import (
 
 // client request details
 type client struct {
-	requests  int
-	resetTime time.Time
+	requests int
+	resetAt  time.Time
 }
 
-const (
-	window = time.Minute
-	limit  = 100
-)
 
 var (
 	clients = map[string]*client{}
 	mu      sync.Mutex // cleanup gorountine will also modify client.
 )
 
-func RateLimiter() core.Middleware {
+func RateLimiter(resetTime time.Duration, limit int) core.Middleware {
 	// cleanup gorountine
 	go func() {
-		for range time.Tick(window) {
+		for range time.Tick(time.Minute) {
 			mu.Lock()
 			for ip, c := range clients {
-				if time.Now().After(c.resetTime) {
+				if time.Now().After(c.resetAt) {
 					delete(clients, ip)
 				}
 			}
@@ -48,35 +44,36 @@ func RateLimiter() core.Middleware {
 			c, ok := clients[clientIp]
 			if !ok {
 				c = &client{
-					resetTime: time.Now().Add(time.Minute),
+					resetAt: time.Now().Add(resetTime),
 				}
 
 				clients[clientIp] = c
 			}
 
-			if time.Now().After(c.resetTime) {
+			if time.Now().After(c.resetAt) {
 				c.requests = 0
-				c.resetTime = time.Now().Add(time.Minute)
+				c.resetAt = time.Now().Add(resetTime)
 			}
-				
-			// headers
-			w.Header().Set("RateLimit-Limit", strconv.Itoa(limit))
-			w.Header().Set("RateLimit-Remaining", strconv.Itoa(limit - c.requests))
-
 
 			c.requests++
 
 			if c.requests > limit { // 100 requests cap for now
-				w.Header().Set("Retry-After", strconv.Itoa(int(time.Until(c.resetTime).Seconds())))
+				w.Header().Set("Retry-After", strconv.Itoa(int(time.Until(c.resetAt).Seconds())))
 
 				mu.Unlock()
 				response.JSON(w, response.WithError(http.StatusText(http.StatusTooManyRequests)), response.WithStatus(http.StatusTooManyRequests))
 				return
 			}
 
+			remaining := limit - c.requests
+			reset := max(0, int(time.Until(c.resetAt).Seconds()))
 			mu.Unlock()
-			hf(w, r)
 
+			// headers
+			w.Header().Set("RateLimit-Limit", strconv.Itoa(limit))
+			w.Header().Set("RateLimit-Remaining", strconv.Itoa(remaining))
+			w.Header().Set("RateLimit-Reset", strconv.Itoa(reset))
+			hf(w, r)
 		}
 	}
 }
