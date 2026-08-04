@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -17,6 +18,7 @@ type client struct {
 
 const (
 	window = time.Minute
+	limit  = 100
 )
 
 var (
@@ -56,10 +58,17 @@ func RateLimiter() core.Middleware {
 				c.requests = 0
 				c.resetTime = time.Now().Add(time.Minute)
 			}
+				
+			// headers
+			w.Header().Set("RateLimit-Limit", strconv.Itoa(limit))
+			w.Header().Set("RateLimit-Remaining", strconv.Itoa(limit - c.requests))
+
 
 			c.requests++
 
-			if c.requests > 100 { // 100 requests cap for now
+			if c.requests > limit { // 100 requests cap for now
+				w.Header().Set("Retry-After", strconv.Itoa(int(time.Until(c.resetTime).Seconds())))
+
 				mu.Unlock()
 				response.JSON(w, response.WithError(http.StatusText(http.StatusTooManyRequests)), response.WithStatus(http.StatusTooManyRequests))
 				return
