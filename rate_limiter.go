@@ -22,25 +22,37 @@ type Limiter struct {
 
 	clients map[string]*client
 	mu      sync.Mutex
+} // todo: create init func for this struct 
+
+func NewLimiter(limit int, delay time.Duration) *Limiter {
+	l := &Limiter{
+		limit: limit,
+		resetTime: delay,
+
+		clients: make(map[string]*client),
+		mu: sync.Mutex{},
+	}
+
+	go l.cleanup() // one cleanup per client
+	return l
+}
+
+func (l *Limiter) cleanup() {
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		l.mu.Lock()
+		for ip, c := range l.clients {
+			if time.Now().After(c.resetAt) {
+				delete(l.clients, ip)
+			}
+		}
+		l.mu.Unlock()
+	}
 }
 
 func (l *Limiter) RateLimiter() core.Middleware {
-	// cleanup gorountine
-	go func() {
-		ticker := time.NewTicker(time.Minute)
-		defer ticker.Stop()
-
-		for range ticker.C {
-			l.mu.Lock()
-			for ip, c := range l.clients {
-				if time.Now().After(c.resetAt) {
-					delete(l.clients, ip)
-				}
-			}
-			l.mu.Unlock()
-		}
-	}()
-
 	return func(hf core.HandlerFunc) core.HandlerFunc {
 		return func(w http.ResponseWriter, r *core.Request) {
 			clientIp := r.RemoteAddr
