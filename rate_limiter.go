@@ -16,23 +16,28 @@ type client struct {
 	resetAt  time.Time
 }
 
+type Limiter struct {
+	limit     int
+	resetTime time.Duration
 
-var (
-	clients = map[string]*client{}
-	mu      sync.Mutex // cleanup gorountine will also modify client.
-)
+	clients map[string]*client
+	mu      sync.Mutex
+}
 
-func RateLimiter(resetTime time.Duration, limit int) core.Middleware {
+func (l *Limiter) RateLimiter() core.Middleware {
 	// cleanup gorountine
 	go func() {
-		for range time.Tick(time.Minute) {
-			mu.Lock()
-			for ip, c := range clients {
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+
+		for range ticker.C {
+			l.mu.Lock()
+			for ip, c := range l.clients {
 				if time.Now().After(c.resetAt) {
-					delete(clients, ip)
+					delete(l.clients, ip)
 				}
 			}
-			mu.Unlock()
+			l.mu.Unlock()
 		}
 	}()
 
@@ -40,37 +45,37 @@ func RateLimiter(resetTime time.Duration, limit int) core.Middleware {
 		return func(w http.ResponseWriter, r *core.Request) {
 			clientIp := r.RemoteAddr
 
-			mu.Lock()
-			c, ok := clients[clientIp]
+			l.mu.Lock()
+			c, ok := l.clients[clientIp]
 			if !ok {
 				c = &client{
-					resetAt: time.Now().Add(resetTime),
+					resetAt: time.Now().Add(l.resetTime),
 				}
 
-				clients[clientIp] = c
+				l.clients[clientIp] = c
 			}
 
 			if time.Now().After(c.resetAt) {
 				c.requests = 0
-				c.resetAt = time.Now().Add(resetTime)
+				c.resetAt = time.Now().Add(l.resetTime)
 			}
 
 			c.requests++
 
-			if c.requests > limit { // 100 requests cap for now
+			if c.requests > l.limit { // 100 requests cap for now
 				w.Header().Set("Retry-After", strconv.Itoa(int(time.Until(c.resetAt).Seconds())))
 
-				mu.Unlock()
+				l.mu.Unlock()
 				response.JSON(w, response.WithError(http.StatusText(http.StatusTooManyRequests)), response.WithStatus(http.StatusTooManyRequests))
 				return
 			}
 
-			remaining := limit - c.requests
+			remaining := l.limit - c.requests
 			reset := max(0, int(time.Until(c.resetAt).Seconds()))
-			mu.Unlock()
+			l.mu.Unlock()
 
 			// headers
-			w.Header().Set("RateLimit-Limit", strconv.Itoa(limit))
+			w.Header().Set("RateLimit-Limit", strconv.Itoa(l.limit))
 			w.Header().Set("RateLimit-Remaining", strconv.Itoa(remaining))
 			w.Header().Set("RateLimit-Reset", strconv.Itoa(reset))
 			hf(w, r)
