@@ -10,25 +10,25 @@ import (
 	"github.com/72sevenzy2/json-parser/response"
 )
 
-type bucket struct {
+type Bucket struct {
 	tokens     float64
 	refilledAt time.Time
 }
 
 type Limiter struct {
-	limit      float64
-	refillRate float64
+	Limit      float64
+	RefillRate float64
 
-	clients map[string]*bucket
+	Clients map[string]*Bucket
 	mu      sync.Mutex
 } // todo: create init func for this struct
 
-func NewLimiter(limit float64, refillRate float64) *Limiter {
+func NewLimiter(limit int, refillRate int) *Limiter {
 	l := &Limiter{
-		limit:     limit,
-		refillRate: refillRate,
+		Limit:     float64(limit),
+		RefillRate: float64(refillRate),
 
-		clients: make(map[string]*bucket),
+		Clients: make(map[string]*Bucket),
 		mu:      sync.Mutex{},
 	}
 
@@ -42,9 +42,9 @@ func (l *Limiter) cleanup() {
 
 	for range ticker.C {
 		l.mu.Lock()
-		for ip, c := range l.clients {
+		for ip, c := range l.Clients {
 			if time.Since(c.refilledAt) > 10 * time.Minute {
-				delete(l.clients, ip)
+				delete(l.Clients, ip)
 			}
 		}
 		l.mu.Unlock()
@@ -57,25 +57,25 @@ func (l *Limiter) RateLimiter() core.Middleware {
 			clientIp := r.RemoteAddr
 
 			l.mu.Lock()
-			c, ok := l.clients[clientIp]
+			c, ok := l.Clients[clientIp]
 			if !ok {
-				c = &bucket{
-					tokens: l.limit,
+				c = &Bucket{
+					tokens: l.Limit,
 					refilledAt: time.Now(),
 				}
 
-				l.clients[clientIp] = c
+				l.Clients[clientIp] = c
 			}
 
 			elapsed := time.Since(c.refilledAt).Seconds()
-			newTokens := elapsed * l.refillRate
+			newTokens := elapsed * l.RefillRate
 
 			c.tokens += newTokens
-			c.tokens = min(c.tokens, l.limit)
+			c.tokens = min(c.tokens, l.Limit)
 			c.refilledAt = time.Now()
 
 			if c.tokens < 1 { // 100 requests cap for now
-				w.Header().Set("Retry-After", strconv.Itoa(int(time.Duration(float64(time.Second) / l.refillRate))))
+				w.Header().Set("Retry-After", strconv.Itoa(int(time.Duration(float64(time.Second) / l.RefillRate))))
 
 				l.mu.Unlock()
 				response.JSON(w, response.WithError(http.StatusText(http.StatusTooManyRequests)), response.WithStatus(http.StatusTooManyRequests))
@@ -87,7 +87,7 @@ func (l *Limiter) RateLimiter() core.Middleware {
 			l.mu.Unlock()
 
 			// headers
-			w.Header().Set("RateLimit-Limit", strconv.Itoa(int(l.limit)))
+			w.Header().Set("RateLimit-Limit", strconv.Itoa(int(l.Limit)))
 			w.Header().Set("RateLimit-Remaining", strconv.Itoa(int(c.tokens)))
 			hf(w, r)
 		}
