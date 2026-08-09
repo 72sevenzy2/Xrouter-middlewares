@@ -1,12 +1,12 @@
 package middleware
 
 import (
-	"fmt"
 	"bytes"
+	"fmt"
+	"github.com/72sevenzy2/http-router/core"
 	"io"
 	"net/http"
 	"time"
-	"github.com/72sevenzy2/http-router/core"
 )
 
 // custom responseWriter type to capture status code and request byte size.
@@ -59,7 +59,7 @@ func Logger(confSize uint32) core.Middleware { // returns the middleware type
 	return func(hf core.HandlerFunc) core.HandlerFunc {
 		return func(w http.ResponseWriter, r *core.Request) {
 			start := time.Now() // setting the current time (before the request has ended)
-			fmt.Printf("Request has started with URL: %s, and method: %s, and in time: %s\n", r.URL, r.Method, start)
+			fmt.Printf("Request has started at: %s, with request method: %s, path: %s\n", start, r.Method, r.URL)
 
 			// buffer for comparison in limited writer Write().
 			buf := bytes.Buffer{}
@@ -99,20 +99,23 @@ func Logger(confSize uint32) core.Middleware { // returns the middleware type
 			body := buf.Bytes()
 			if uint32(len(body)) > opt.size {
 				body = body[:opt.size] // truncated
-				fmt.Println("body has been truncated.")
+				fmt.Println("body truncated.")
 			}
 
 			endTime := time.Since(start) // after the request has ended, in which we will print below
-			fmt.Printf("request has ended: %s, with status code %d ||| and with response body size (in bytes): %d", endTime, rw.status, rw.size)
+			fmt.Printf("Request ended at: %s ||| Status code: %d ||| Response body size (bytes): %d", endTime, rw.status, rw.size)
 
-			fmt.Println("\nrequest body data: (with data size of:)", opt.size)
+			fmt.Println("\n Request body size (bytes): ", opt.size)
 			fmt.Println(string(body))
 
 			// redacting sensitive header before printing
 			header := r.Header.Clone()
 			header.Del("Authorization")
 
-			fmt.Println("Request headers:", header)
+			fmt.Println("Request headers:")
+			for k, v := range header {
+				fmt.Println(k, v)
+			}
 		}
 	}
 }
