@@ -7,7 +7,6 @@ import (
 	"github.com/72sevenzy2/http-router/core"
 )
 
-
 // timeout middleware
 
 func Timeout(t time.Duration) core.Middleware {
