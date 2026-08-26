@@ -19,31 +19,32 @@ type Limiter struct {
 	Limit      float64
 	RefillRate float64
 
-	Clients map[string]*Bucket
 	mu      sync.Mutex
+	Clients map[string]*Bucket
 } // todo: create init func for this struct
 
 func NewLimiter(limit int, refillRate int) *Limiter {
 	l := &Limiter{
-		Limit:     float64(limit),
+		Limit:      float64(limit),
 		RefillRate: float64(refillRate),
 
 		Clients: make(map[string]*Bucket),
-		mu:      sync.Mutex{},
 	}
 
-	go l.cleanup() // one cleanup per client
+
+
+	go l.cleanup(time.Minute * 5) // one cleanup per client
 	return l
 }
 
-func (l *Limiter) cleanup() {
+func (l *Limiter) cleanup(t time.Duration) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 
 	for range ticker.C {
 		l.mu.Lock()
 		for ip, c := range l.Clients {
-			if time.Since(c.refilledAt) > 10 * time.Minute {
+			if time.Since(c.refilledAt) > t {
 				delete(l.Clients, ip)
 			}
 		}
@@ -60,7 +61,7 @@ func (l *Limiter) RateLimiter() core.Middleware {
 			c, ok := l.Clients[clientIp]
 			if !ok {
 				c = &Bucket{
-					tokens: l.Limit,
+					tokens:     l.Limit,
 					refilledAt: time.Now(),
 				}
 
@@ -75,7 +76,7 @@ func (l *Limiter) RateLimiter() core.Middleware {
 			c.refilledAt = time.Now()
 
 			if c.tokens < 1 { // 100 requests cap for now
-				w.Header().Set("Retry-After", strconv.Itoa(int(time.Duration(float64(time.Second) / l.RefillRate))))
+				w.Header().Set("Retry-After", strconv.Itoa(int(time.Duration(float64(time.Second)/l.RefillRate))))
 
 				l.mu.Unlock()
 				response.JSON(w, response.WithError(http.StatusText(http.StatusTooManyRequests)), response.WithStatus(http.StatusTooManyRequests))

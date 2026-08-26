@@ -10,10 +10,10 @@ import (
 
 // timeout middleware
 
-func Timeout(seconds int) core.Middleware {
+func Timeout(t time.Duration) core.Middleware {
 	return func(hf core.HandlerFunc) core.HandlerFunc {
 		return func(w http.ResponseWriter, r *core.Request) {
-			ctx, cancel := context.WithTimeout(r.Context(), time.Duration(seconds)*time.Second) // initialising timeout (in seconds)
+			ctx, cancel := context.WithTimeout(r.Context(), t) // initialising timeout (in seconds)
 
 			defer cancel() // cancelling at the end of the func (current handler)
 
