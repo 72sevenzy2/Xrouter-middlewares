@@ -79,7 +79,7 @@ func (l *Limiter) RateLimiter() core.Middleware {
 				w.Header().Set("Retry-After", strconv.Itoa(int(time.Duration(float64(time.Second)/l.RefillRate))))
 
 				l.mu.Unlock()
-				response.JSON(w, response.WithError(http.StatusText(http.StatusTooManyRequests)), response.WithStatus(http.StatusTooManyRequests))
+				response.JSON(w, http.StatusTooEarly, nil, http.StatusText(http.StatusTooEarly))
 				return
 			}
 

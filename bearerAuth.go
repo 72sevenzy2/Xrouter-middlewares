@@ -4,7 +4,7 @@ import (
 	"strings"
 	"net/http"
 	"github.com/72sevenzy2/http-router/core"
-	"github.com/72sevenzy2/json-parser/helpers"
+	"github.com/72sevenzy2/json-parser/response"
 )
 
 // bearer auth middleware (this includes having a bearer token which will then be compared to the authkey )
@@ -12,11 +12,6 @@ import (
 func BearerAuth(AuthKey string) core.Middleware {
 	return func(hf core.HandlerFunc) core.HandlerFunc {
 		return func(w http.ResponseWriter, r *core.Request) {
-			if len(AuthKey) <= 1 { // check if authkey has less than 1 character
-				helpers.Failed(w)
-				return
-			}
-
 			authLab := r.Header.Get("Authorization") // grabbing the token
 
 			var token string
@@ -24,7 +19,7 @@ func BearerAuth(AuthKey string) core.Middleware {
 				token = strings.TrimPrefix(authLab, "Bearer ") // removing the "bearer " part of the token to then compare it to the authkey
 
 				if token != AuthKey {
-					helpers.Failed(w)
+					response.JSON(w, http.StatusForbidden, nil, http.StatusText(http.StatusForbidden))
 					return
 				}
 
@@ -33,7 +28,7 @@ func BearerAuth(AuthKey string) core.Middleware {
 
 			// continuing if "Bearer " doesnt include in the authkey.
 			if AuthKey != authLab { // check if the authkey is matching
-				helpers.Failed(w) // if not then throw a failed json response
+				response.JSON(w, http.StatusForbidden, nil, http.StatusText(http.StatusForbidden))
 				return            // exit the request
 			}
 
