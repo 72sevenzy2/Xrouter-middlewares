@@ -15,7 +15,7 @@ func Canceller() (core.Middleware, context.CancelFunc) {
 			reqCtx, c := context.WithCancel(ctx)
 			defer c()
 
-			r.ContextReq = r.ContextReq.WithContext(reqCtx)
+			r.Request = r.Request.WithContext(reqCtx)
 			hf(w, r)
 		}
 	}
